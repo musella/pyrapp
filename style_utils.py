@@ -14,6 +14,13 @@ def ztitle(h,tit):
     h.GetZaxis().SetTitle(tit)
 
 # -----------------------------------------------------------------------------------------------------------
+def logy(h,ymin=None):
+    if h.IsA().InheritsFrom(ROOT.TPad.Class()):
+        h.SetLogy()
+        if ymin:
+            h.ymin = ymin
+    
+# -----------------------------------------------------------------------------------------------------------
 def colors(h,color):
     h.SetMarkerColor(color)
     h.SetLineColor(color)
@@ -23,6 +30,58 @@ def colors(h,color):
 def legopt(h,opt):
     h.legopt = opt
 
+# -----------------------------------------------------------------------------------------------------------
+def xrange(h,xmin,xmax):
+    h.GetXaxis().SetRangeUser(xmin,xmax)
+    
+# -----------------------------------------------------------------------------------------------------------
+def yrange(h,xmin,xmax):
+    h.GetYaxis().SetRangeUser(xmin,xmax)
+
+# -----------------------------------------------------------------------------------------------------------
+def zrange(h,xmin,xmax):
+    h.GetZaxis().SetRangeUser(xmin,xmax)
+
+# -----------------------------------------------------------------------------------------------------------
+def mvStatBox(h,prev=None,vert=-1,horiz=0.):
+    ROOT.gPad.Update()
+    st = h.FindObject('stats')
+    st.SetLineColor(h.GetLineColor())
+    st.SetTextColor(h.GetLineColor())
+
+    if prev:
+        shiftx = (prev.GetX2NDC() - st.GetX1NDC())*horiz
+        shifty = (prev.GetY2NDC() - st.GetY1NDC())*vert
+
+        st.SetX1NDC(st.GetX1NDC()+shiftx)
+        st.SetX2NDC(st.GetX2NDC()+shiftx)
+
+        st.SetY1NDC(st.GetY1NDC()+shifty)
+        st.SetY2NDC(st.GetY2NDC()+shifty)
+
+    ROOT.gPad.Update()
+    return st
+
+# -----------------------------------------------------------------------------------------------------------
+def addCmsLumi(canv,period,pos,extraText=None):
+    if extraText:
+        ROOT.writeExtraText = True
+        if type(extraText) == str and extraText != "":
+            ROOT.extraText = extraText
+    ROOT.CMS_lumi(canv,period,pos)
+
+
+# -----------------------------------------------------------------------------------------------------------
+def printIntegral(h,xmin=None,xmax=None):
+    bmin=-1
+    bmax=-1
+    if xmin:
+        bmin = h.FindBin(xmin)
+    if xmax:
+        bmax = h.FindBin(xmax)
+
+    print("Integral %s(%s,%s): %1.3g" % (h.GetName(), str(xmin), str(xmax), h.Integral(bmin,bmax) ))
+        
 # -----------------------------------------------------------------------------------------------------------
 def apply(h,modifs):
     for method in modifs:

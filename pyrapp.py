@@ -2,18 +2,31 @@ from optparse import OptionParser, make_option
 import sys
 import json
 import os
+import subprocess, shlex
 
 from optpars_utils import ScratchAppend, Load
 from fnmatch import fnmatch
 
 from pprint import pprint
 
+# -------------------------------------------------------------------------------
+def shell_expand(string):
+    if string:
+        return os.path.expanduser( os.path.expandvars(string) )
+    return None
+
+# -------------------------------------------------------------------------------
+def shell_args(cmd):
+    return [ shell_expand(a) for a in shlex.split(cmd) ]
+                
 # -----------------------------------------------------------------------------
 class PyRApp(object):
     
     def __init__(self,option_list,defaults=None):
         self.objs_ = []
         self.canvs_ = []
+
+        self.files_ = {}
 
         opt_list=[
             make_option("-I","--interactive",
@@ -25,21 +38,25 @@ class PyRApp(object):
                         action="store_false", dest="interactive",
                         help="default: %default", metavar=""
                         ),
-            make_option("-s","--save",
+            make_option("-S","--save",
                         action="store_true", dest="save",
                         default=False,
                         help="default: %default", metavar=""
                         ),
             make_option("--saveas",
                         action="callback", dest="saveas", type="string", callback=ScratchAppend(),
-                        default=["png","root"],
+                        default=["convert_png","root"],
                         help="default: %default", metavar=""
                         ),
             make_option("--savebw",
                         action="store_true", dest="savebw", default=False,
                         help="default: %default",
                         ),
-            make_option("-o","--outdir",
+            make_option("--dumpcfg",
+                        action="store_true", dest="dumpcfg", default=False,
+                        help="default: %default",
+                        ),
+            make_option("-O","--outdir",
                         action="store", type="string", dest="outdir", default=None,
                         help="default: %default",
                         ),
@@ -63,8 +80,13 @@ class PyRApp(object):
         
         (self.options, self.args) = parser.parse_args()
 
-        if self.options.verbose:
+        if self.options.dumpcfg:
+            self.options.dumpcfg = False
             print ( json.dumps( self.options.__dict__,indent=4,sort_keys=True) )  
+            sys.exit(0)
+            
+        if self.options.verbose:
+            print ( json.dumps( self.options.__dict__,indent=4,sort_keys=True) )
             
         if not self.options.interactive:
             sys.argv.append("-b")
@@ -87,18 +109,36 @@ class PyRApp(object):
         self.__call__(self.options,self.args)
         if self.options.save:
             self.save()
-            
-    def save(self):
+
+    def autosave(self,clear=False):
+        if self.options.save:
+            self.save(clear)
+        
+    def save(self,clear=False):
         for c in self.canvs_:
+            print c
             c.Modified()
             for fmt in self.options.saveas:
-                c.SaveAs("%s/%s.%s" % ( self.options.outdir, c.GetName(), fmt ) )
+                print fmt
+                if fmt == "convert_png":
+                    c.SaveAs("%s/tmp_%s.eps" % ( self.options.outdir, c.GetName() ) )
+                    cmd = "convert -format png %s/tmp_%s.eps %s/%s.png" % ( self.options.outdir, c.GetName(), self.options.outdir, c.GetName() )
+                    ## print cmd
+                    subprocess.Popen( shell_args(cmd) )
+                    ## subprocess.Popen( shell_args("rm %s/tmp_%s.eps" % ( self.options.outdir, c.GetName() ))  )
+                else:
+                    c.SaveAs("%s/%s.%s" % ( self.options.outdir, c.GetName(), fmt ) )            
             if self.options.savebw:
+                print "gray scale"
                 c.SetGrayscale(True)
                 for fmt in self.options.saveas:
                     if not fmt in ["C","root"]:
                         c.SaveAs("%s/%s_bw.%s" % ( self.options.outdir, c.GetName(), fmt ) )
                 c.SetGrayscale(False)
+            print "ok"
+        if clear:
+            self.canvs_ = []
+        
 
     def keep(self,objs,format=False):
         if type(objs) == list:
@@ -107,13 +147,39 @@ class PyRApp(object):
             return
 
         self.objs_.append(objs)
-        if objs.IsA().InheritsFrom("TCanvas"):
-            self.canvs_.append(objs)
+        try:
+            if objs.IsA().InheritsFrom("TCanvas"):
+                self.canvs_.append(objs)
+            if objs.IsA().InheritsFrom("TFile"):
+                key = "%s::%s" % (os.path.abspath(objs.GetName()), self.normalizeTFileOptions(objs.GetOption()))
+                self.files_[key] = objs
+        except:
+            pass
         if format:
-            for key,st in self.options.styles.iteritems():
-                if fnmatch(objs.GetName(),key):
-                    style_utils.apply(objs,st)
-                                            
+            self.format(objs,self.options.styles)
+            ### for key,st in self.options.styles.iteritems():
+            ###     ## print objs.GetName(),key
+            ###     if fnmatch(objs.GetName(),key) or objs.GetName() == key:
+            ###         style_utils.apply(objs,st)
+            ### 
+            ### for key,st in self.options.styles.iteritems():
+            ###     if "!%s" % objs.GetName() == key:
+            ###         style_utils.apply(objs,st)
+
+    def format(self,objs,styles):
+        for key,st in styles.iteritems():
+            if fnmatch(objs.GetName(),key) or objs.GetName() == key:
+                style_utils.apply(objs,st)
+
+        for key,st in styles.iteritems():
+            if "!%s" % objs.GetName() == key:
+                style_utils.apply(objs,st)
+        
+        
+    def log(self,what,level=-1):
+        if level < self.options.verbose:
+            print( what )
+            
     def getStyle(self,key):
         if key in self.options.styles:
             return self.options.styles[key]
@@ -124,6 +190,18 @@ class PyRApp(object):
             self.options.styles[key].extend( style )
         else:
             self.options.styles[key] = style
+
+    def normalizeTFileOptions(self,option):
+        ## FIXME reordering etc
+        return str(option).lower()
+    
+    def open(self,name,option="",folder=None):
+        if folder:
+            name = "%s/%s" % ( folder, name )
+        key = "%s::%s" % (os.path.abspath(name), option)
+        if not key in self.files_:
+            self.files_[key] = ROOT.TFile.Open(os.path.abspath(name),self.normalizeTFileOptions(option))
+        return self.files_[key]
         
 # -----------------------------------------------------------------------------------------------------------
 class Test(PyRApp):
@@ -136,7 +214,7 @@ class Test(PyRApp):
                         help="default: %default", metavar=""
                         ),
             make_option("-l","--loadmap",
-                        action="callback", dest="loadmap", type="string", callback=options.Load(),
+                        action="callback", dest="loadmap", type="string", callback=Load(),
                         default={}
                         ),
             ])

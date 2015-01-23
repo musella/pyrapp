@@ -1,20 +1,23 @@
 import json
+import csv
 
 # -----------------------------------------------------------------------------------------------------------
 class ScratchAppend:
-    def __init__(self):
+    def __init__(self,typ=str):
         self.cold = True
+        self.typ = typ
         
     def __call__(self,option, opt_str, value, parser, *args, **kwargs):
         target = getattr(parser.values,option.dest)
         if self.cold:
             del target[:]
             self.cold = False
+        print value
         if type(value) == str and "," in value:
             for v in value.split(","):
-                target.append(v)
+                target.append(self.typ(v))
         else:
-            target.append(value)
+            target.append(self.typ(value))
                                                     
 # -----------------------------------------------------------------------------
 class Load:
@@ -39,3 +42,17 @@ class Load:
                     attr.extend(v)
                 setter(dest,k,v)
             cf.close()
+
+# -----------------------------------------------------------------------------
+class Csv:
+    def __call__(self,option, opt_str, value, parser, *args, **kwargs):
+        dest = getattr(parser.values,option.dest)
+        if not dest:
+            setattr(parser.values,option.dest,[])
+            dest = getattr(parser.values,option.dest)
+        cf = open(value)
+        reader = csv.DictReader(cf)
+        for row in reader:
+            dest.append(row)            
+        cf.close()
+        

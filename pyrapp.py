@@ -1,4 +1,4 @@
-from optparse import OptionParser, make_option
+from optparse import OptionParser, OptionGroup, make_option
 import sys
 import json
 import os
@@ -22,7 +22,7 @@ def shell_args(cmd):
 # -----------------------------------------------------------------------------
 class PyRApp(object):
     
-    def __init__(self,option_list,defaults=None):
+    def __init__(self,option_list,option_groups=[],defaults=None):
         self.objs_ = []
         self.canvs_ = []
 
@@ -74,10 +74,21 @@ class PyRApp(object):
                         default=False,
                         help="default: %default"
                         )
-            ] + option_list
+            ] ##  + option_list
         
-        parser = OptionParser(option_list=opt_list)
+        ## parser = OptionParser(option_list=opt_list)
+        parser = OptionParser()
+
+        opt_groups = [ ("PyRApp Options", opt_list ) ] + option_groups
+        if len(option_list) > 0:
+            opt_groups.append( ("User Options", option_list) )
         
+        for name,opts in opt_groups:
+            gr = OptionGroup(parser,name)
+            for opt in opts:
+                gr.add_option(opt)
+            parser.add_option_group(gr)
+            
         (self.options, self.args) = parser.parse_args()
 
         if self.options.dumpcfg:
@@ -116,10 +127,10 @@ class PyRApp(object):
         
     def save(self,clear=False):
         for c in self.canvs_:
-            print c
+            ## print c
             c.Modified()
             for fmt in self.options.saveas:
-                print fmt
+                ## print fmt
                 if fmt == "convert_png":
                     c.SaveAs("%s/tmp_%s.eps" % ( self.options.outdir, c.GetName() ) )
                     cmd = "convert -format png %s/tmp_%s.eps %s/%s.png" % ( self.options.outdir, c.GetName(), self.options.outdir, c.GetName() )
@@ -129,16 +140,17 @@ class PyRApp(object):
                 else:
                     c.SaveAs("%s/%s.%s" % ( self.options.outdir, c.GetName(), fmt ) )            
             if self.options.savebw:
-                print "gray scale"
+                ## print "gray scale"
                 c.SetGrayscale(True)
                 for fmt in self.options.saveas:
                     if not fmt in ["C","root"]:
                         c.SaveAs("%s/%s_bw.%s" % ( self.options.outdir, c.GetName(), fmt ) )
                 c.SetGrayscale(False)
-            print "ok"
+            ## print "ok"
         if clear:
+            for c in self.canvs_:
+                del c
             self.canvs_ = []
-        
 
     def keep(self,objs,format=False):
         if type(objs) == list:
@@ -146,10 +158,11 @@ class PyRApp(object):
                 self.keep(obj,format)
             return
 
-        self.objs_.append(objs)
+        if objs.IsA().InheritsFrom("TCanvas"):
+            self.canvs_.append(objs)
+        else:
+            self.objs_.append(objs)
         try:
-            if objs.IsA().InheritsFrom("TCanvas"):
-                self.canvs_.append(objs)
             if objs.IsA().InheritsFrom("TFile"):
                 key = "%s::%s" % (os.path.abspath(objs.GetName()), self.normalizeTFileOptions(objs.GetOption()))
                 self.files_[key] = objs
@@ -196,11 +209,18 @@ class PyRApp(object):
         return str(option).lower()
     
     def open(self,name,option="",folder=None):
+        tdir = None
+        fname = name
+        if ".root/" in name:
+            fname, tdir = name.split(".root/")
+            fname += ".root"
         if folder:
-            name = "%s/%s" % ( folder, name )
-        key = "%s::%s" % (os.path.abspath(name), option)
+            fname = "%s/%s" % ( folder, name )
+        key = "%s::%s" % (os.path.abspath(fname), option)
         if not key in self.files_:
-            self.files_[key] = ROOT.TFile.Open(os.path.abspath(name),self.normalizeTFileOptions(option))
+            self.files_[key] = ROOT.TFile.Open(os.path.abspath(fname),self.normalizeTFileOptions(option))
+        if tdir:
+            return self.files_[key].Get(tdir)
         return self.files_[key]
         
 # -----------------------------------------------------------------------------------------------------------

@@ -1,11 +1,17 @@
 import ROOT
 
 # -----------------------------------------------------------------------------------------------------------
+def applyTo(obj,method,style):
+    res = getattr(obj,method)()
+    apply(res,style)
+
+# -----------------------------------------------------------------------------------------------------------
 def xtitle(h,tit):
     h.GetXaxis().SetTitle(tit)
 
 # -----------------------------------------------------------------------------------------------------------
 def ytitle(h,tit):
+    ## print "ytitle", h.GetName(), tit
     h.GetYaxis().SetTitle( tit % { "binw" : h.GetBinWidth(0) } )
     # h.GetYaxis().SetTitle(tit)
 
@@ -19,7 +25,18 @@ def logy(h,ymin=None):
         h.SetLogy()
         if ymin:
             h.ymin = ymin
-    
+
+# -----------------------------------------------------------------------------------------------------------
+def scaleFonts(h,scale):
+    ## print "scaleFonts", scale
+    for ax in h.GetXaxis(),h.GetYaxis(),h.GetZaxis():
+        ax.SetTitleSize(ax.GetTitleSize()*scale)
+        ax.SetLabelSize(ax.GetLabelSize()*scale)
+
+    for ax in h.GetYaxis(),:
+        ax.SetTitleOffset(ax.GetTitleOffset()/scale)
+        
+
 # -----------------------------------------------------------------------------------------------------------
 def colors(h,color):
     h.SetMarkerColor(color)

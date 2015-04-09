@@ -34,8 +34,8 @@ void hggPaperStyle()
   hggStyle->SetTitleColor(1, "XYZ");
   hggStyle->SetTitleFont(42, "XYZ");
   hggStyle->SetTitleSize(0.05, "XYZ");
-  hggStyle->SetTitleXOffset(1.);//0.9);
   hggStyle->SetTitleYOffset(1.5); // => 1.15 if exponents
+  hggStyle->SetTitleXOffset(1.);//0.9);
 
   // For hgg axis labels:
   hggStyle->SetLabelColor(1, "XYZ");

@@ -2,9 +2,11 @@
 from pyrapp import *
 import array
 
+from style_utils import scaleFonts
+
 # -----------------------------------------------------------------------------------------------------------
 def rename(h,cmap):
-    ## print "renaming ", h.GetName()
+    ## print "renaming ", h.GetNam()
     toks = h.GetName().split("_")
     cat = None
     for t in toks:
@@ -24,6 +26,8 @@ def getQuantilesGraphs(histo,probs,twosided=False,errors=True,sign=1):
     from math import sqrt
     ## histo.Print("all")
     graphs = [ ]
+    if len(probs) == 0:
+        return graphs
     for p in probs:
         gr = ROOT.TGraphErrors(histo.GetNbinsX())
         gr.SetName("%s_quantile_%1.2f"%(histo.GetName(),100.*p))
@@ -100,64 +104,91 @@ def getQuantilesGraphs(histo,probs,twosided=False,errors=True,sign=1):
                 
     return graphs
 
+## 
+def getEfficiencyGraphs(histo,thresholds,sign=+1):
+    
+    graphs = []
+    total = histo.ProjectionX()
+    for thr in thresholds:
+        thrbin = histo.GetYaxis().FindBin(thr)
+        print thrbin, histo.GetYaxis().GetBinCenter(thrbin)
+        if sign>0:
+            num = histo.ProjectionX("_num",thrbin,-1)
+        else:
+            num = histo.ProjectionX("_num",0,thrbin)
+        num.Print()
+        total.Print()
+        histo.Print()
+        graph = ROOT.TGraphAsymmErrors(num,total,"cp")
+        graphs.append(graph)
+        
+        histo.GetYaxis().SetRange(-1,-1)
+        
+    return graphs
+        
+
 # -----------------------------------------------------------------------------------------------------------
 class PlotApp(PyRApp):
 
-    def __init__(self,option_list=[],default_cats=[]):
-        super(PlotApp,self).__init__(option_list=[
-            make_option("-c","--categories",dest="categories",action="callback",callback=ScratchAppend(),
-                        default=default_cats,help="default: %default"),
-            make_option("-l","--labels",dest="labels",action="callback",callback=Load(),metavar="JSON",
-                        default={},help="default: %default"),
-            make_option("-p","--plots",dest="plots",action="callback",callback=Load(),metavar="JSON",
-                        default=[],help="default: %default"),
-            make_option("-t","--template",dest="template",action="store",type="string",
-                        default="%(name)s_%(cat)s_%(sample)s",help="default: %default"),
-            make_option("--postproc",dest="postproc",action="callback",callback=Load(),metavar="JSON",
-                        default={},help="default: %default"),
-            make_option("--input-dir",dest="input_dir",action="store",type="string",
-                        default=None,help="default: %default"),
-            make_option("--data",dest="data",action="callback",callback=Load(),metavar="JSON",
-                        default=None,help="default: %default"),
-            make_option("--sig",dest="sig",action="callback",callback=Load(),metavar="JSON",
-                        default=None,help="default: %default"),
-            make_option("--bkg",dest="bkg",action="callback",callback=Load(),metavar="JSON",
-                        default=None,help="default: %default"),
-            make_option("-i","--infile",dest="infile",action="store",type="string",
-                        default=None,help="default: %default"),
-            make_option("--data-file",dest="data_file",action="store",type="string",
-                        default=None,help="default: %default"),
-            make_option("--sig-file",dest="sig_file",action="store",type="string",
-                        default=None,help="default: %default"),
-            make_option("--bkg-file",dest="bkg_file",action="store",type="string",
-                        default=None,help="default: %default"),
-            make_option("--legpos",dest="legpos",action="callback",callback=ScratchAppend(float),type="string",
-                        default=[],help="default: %default"),
-            make_option("--rootstyle-extra",dest="rootstyle_extra",action="callback",callback=ScratchAppend(str),type="string",
-                        default=[],help="default: %default"),
-
-            ]+option_list)
+    def __init__(self,option_list=[],option_groups=[],default_cats=[]):
+        super(PlotApp,self).__init__(option_groups=[
+                ("PlotApp options", [
+                        make_option("-c","--categories",dest="categories",action="callback",callback=ScratchAppend(),type="string",
+                                    default=default_cats,help="default: %default"),
+                        make_option("-l","--labels",dest="labels",action="callback",callback=Load(),metavar="JSON",
+                                    default={},help="default: %default"),
+                        make_option("-p","--plots",dest="plots",action="callback",callback=Load(),metavar="JSON",
+                                    default=[],help="default: %default"),
+                        make_option("-t","--template",dest="template",action="store",type="string",
+                                    default="%(name)s_%(cat)s_%(sample)s",help="default: %default"),
+                        make_option("--postproc",dest="postproc",action="callback",callback=Load(),metavar="JSON",
+                                    default={},help="default: %default"),
+                        make_option("--input-dir",dest="input_dir",action="store",type="string",
+                                    default=None,help="default: %default"),
+                        make_option("--data",dest="data",action="callback",callback=Load(),metavar="JSON",
+                                    default=None,help="default: %default"),
+                        make_option("--sig",dest="sig",action="callback",callback=Load(),metavar="JSON",
+                                    default=None,help="default: %default"),
+                        make_option("--bkg",dest="bkg",action="callback",callback=Load(),metavar="JSON",
+                                    default=None,help="default: %default"),
+                        make_option("-i","--infile",dest="infile",action="store",type="string",
+                                    default=None,help="default: %default"),
+                        make_option("--data-file",dest="data_file",action="store",type="string",
+                                    default=None,help="default: %default"),
+                        make_option("--sig-file",dest="sig_file",action="store",type="string",
+                                    default=None,help="default: %default"),
+                        make_option("--bkg-file",dest="bkg_file",action="store",type="string",
+                                    default=None,help="default: %default"),
+                        make_option("--legpos",dest="legpos",action="callback",callback=ScratchAppend(float),type="string",
+                                    default=[],help="default: %default"),
+                        make_option("--rootstyle-extra",dest="rootstyle_extra",action="callback",callback=ScratchAppend(str),type="string",
+                                    default=[],help="default: %default"),
+                        ])
+                        ]+option_groups,
+                 option_list=option_list)
         
 
         self.data_ = None
         self.sig_  = None
         self.bkg_  = None
-        
+        self.init_ = False
+
         global ROOT, style_utils
         import ROOT
         import style_utils
 
     def __call__(self,options,args):
 
-        self.template_ = options.template
-        
-        self.loadRootStyle()
-        
-        ROOT.gStyle.Print()
-        ROOT.gROOT.ForceStyle()
+        if not self.init_:
+            self.template_ = options.template
+            
+            self.loadRootStyle()
+            
+            ## ROOT.gStyle.Print()
+            ROOT.gROOT.ForceStyle()
+            self.init_ = True
 
-        print options.bkg_file
-
+        ## print options.bkg_file
         self.data_ = self.openDataset(self.data_,options.data_file,options.infile,options.data)
         self.sig_  = self.openDataset(self.sig_ ,options.sig_file ,options.infile,options.sig )
         self.bkg_  = self.openDataset(self.bkg_ ,options.bkg_file ,options.infile,options.bkg )
@@ -171,7 +202,7 @@ class PlotApp(PyRApp):
     def openDataset(self,dst,fname,default,extra):
         global ROOT
         
-        print "openDataset",fname
+        ### print "openDataset",fname
 
         if not fname:
             fname = default
@@ -188,48 +219,60 @@ class PlotApp(PyRApp):
         bkg   = self.bkg_
         sig   = self.sig_
         plots = options.plots
-        categories = options.categories
         
-        ROOT.gStyle.Print()
+        ## ROOT.gStyle.Print()
 
         # loop over categories
+        categories = options.categories
+        if options.groups:
+            categories = options.groups.keys()
         for cat in categories:
             if type(cat) == int: 
                 catname = "cat%d" % cat
             else:
                 catname = cat
-            print catname 
+            group = None
+            if options.groups:
+                group = options.groups[cat]
+            ## print catname 
             # loop over plots
             for plot in plots:
 
-                plotname, plotmodifs, drawopts, legPos = plot
+                if len(plot) == 4:
+                    plotname, plotmodifs, drawopts, legPos = plot
+                    skip = []
+                elif len(plot) == 5:
+                    plotname, plotmodifs, drawopts, legPos, skip = plot
                 if drawopts == None:
                     drawopts = options.drawopts
                 if legPos == None:
                     legPos = options.legpos
                     
                 drawmethod, dataopt, bkgopt, sigopt = drawopts
+                doRatio = False
+                if "DrawRatio" in drawmethod:
+                    doRatio = True
 
                 bkghists = []
                 sighists = []
                 datahists = []
                 
-                print bkg
+                ## print bkg
                 
                 # read background MC
-                if bkg != None:
+                if bkg != None and not "bkg" in skip:
                     bkgfile, bkgprocs = bkg
-                    bkghists = [ self.readProcess(bkgfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname) for subprocs in bkgprocs ]
+                    bkghists = [ self.readProcess(bkgfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group) for subprocs in bkgprocs ]
                     
                 # read signal MC
-                if sig != None:
+                if sig != None and not "sig" in skip:
                     sigfile, sigprocs = sig
-                    sighists = [ self.readProcess(sigfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname) for subprocs in sigprocs ]
+                    sighists = [ self.readProcess(sigfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group) for subprocs in sigprocs ]
                     
                 # read data
-                if data != None:
+                if data != None and not "data" in skip:
                     datafile, dataprocs = data
-                    datahists = [ self.readProcess(datafile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname) for subprocs in dataprocs ]
+                    datahists = [ self.readProcess(datafile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group) for subprocs in dataprocs ]
                     
                 # collect histograms
                 allhists = datahists+bkghists+sighists
@@ -248,8 +291,25 @@ class PlotApp(PyRApp):
                 
                 # allocate canvas and legend and draw frame
                 canv,leg = self.makeCanvAndLeg("%s_%s" % ( plotname, catname), legPos )
+                if doRatio:
+                    ratio =  [ float(f) for f in drawmethod.split("DrawRatio")[1].split("[")[1].split("]")[0].split(",") ][0]
+                    pads  = [ROOT.TPad("%s_main"%canv.GetName(),"%s_main"%canv.GetName(),0.,1.-ratio,1.,1.),
+                             ROOT.TPad("%s_rat"%canv.GetName(),"%s_rat"%canv.GetName(),0.,0.,1.,1.-ratio)
+                             ]
+                    pads[0].SetBottomMargin(ratio*0.03)
+                    pads[1].SetBottomMargin(pads[1].GetBottomMargin()+pads[1].GetTopMargin()+ratio*0.2)
+                    pads[1].SetTopMargin(ratio*0.03)
+                    pads[1].SetTickx()
+                    for p in pads:
+                        p.Draw()
+                    pads[0].cd()
+                    self.keep(pads,True)
+                    pads[1].SetLogy(False)
                 if canv.GetLogy():
                     ymin = getattr(canv,"ymin",1.e-4)
+                if doRatio:
+                    frame.SetLabelSize(0.)
+                    frame.SetTitleSize(0.)
                 frame.Draw()
             
                 # draw background first
@@ -257,28 +317,44 @@ class PlotApp(PyRApp):
                     bkgstk = self.makeStack("bkg_%s_%s" % ( plotname, catname), bkghists)
                     ymax = max(ymax,self.drawStack(bkgstk,drawmethod,"%s SAME"%bkgopt))
                     
+                # then signal
+                if len(sighists) > 0:
+                    sigstk = self.makeStack("sig_%s_%s" % ( plotname, catname),sighists)
+                    ymax = max(ymax,self.drawStack(sigstk,drawmethod,"%s SAME"%sigopt))
+
                 # then data
                 if len(datahists) > 0:
                     datastk = self.makeStack("data_%s_%s" % ( plotname, catname),datahists)
                     ymax = max(ymax,self.drawStack(datastk,drawmethod,"%s SAME"%dataopt))
             
-                # and finally signal
-                if len(sighists) > 0:
-                    sigstk = self.makeStack("sig_%s_%s" % ( plotname, catname),sighists)
-                    ymax = max(ymax,self.drawStack(sigstk,drawmethod,"%s SAME"%sigopt))
             
                 # make legend
                 for h in allhists:
                     legopt = "f"
                     if hasattr(h,"legopt"):
                         legopt = h.legopt
-                    leg.AddEntry(h,"",legopt)
+                    if legopt != "omit":
+                        leg.AddEntry(h,"",legopt)
             
                 # adjust yaxis
                 frame.GetYaxis().SetRangeUser(ymin,ymax*1.2)
                 leg.Draw("same")
                 canv.RedrawAxis()
             
+                if doRatio:
+                    pads[1].cd()
+                    ratio = datastk.GetStack().At(datastk.GetStack().GetEntries()-1).Clone("%s_%s_ratio" % (plotname,catname))
+                    den = bkgstk.GetStack().At(bkgstk.GetStack().GetEntries()-1)
+                    ratio.Sumw2()
+                    den.Sumw2()
+                    ratio.Divide(ratio,den,1.,1.,"B")
+                    self.keep(ratio,True)
+                    
+                    scaleFonts(ratio,pads[0].GetHNDC()/pads[1].GetHNDC())
+                    
+                    ratio.Draw("hist")
+                    pads[0].cd()
+                    
                 # if needed draw inset with zoom-in
                 ##   DrawInset[rngmin,rngmax,posx1,posy1,posx2,posy2]
                 if "DrawInset" in drawmethod:
@@ -317,11 +393,11 @@ class PlotApp(PyRApp):
     #
     # Read histograms for a given process, applying manipulators
     #
-    def readProcess(self,fin,name,title,style,subproc,plot,plotmodifs,category):
+    def readProcess(self,fin,name,title,style,subproc,plot,plotmodifs,category,group):
         
-        print "readProcess", fin,name,title,style,subproc,plot,plotmodifs,category
+        ## print "readProcess", fin,name,title,style,subproc,plot,plotmodifs,category
         names = subproc.keys()               
-        histos = self.readHistos(fin,plot,samples=names,cat=category)
+        histos = self.readObjects(fin,plot,samples=names,cat=category,group=group)
         for iplot in range(len(histos)):
             h = histos[iplot]
             hname = names[iplot]
@@ -342,20 +418,49 @@ class PlotApp(PyRApp):
     #
     # Read plots from globe histogram files
     #
-    def readHistos(self,fin, name, cat="cat0", samples=[]):
+    def readObjects(self,fin, name, cat="cat0", samples=[],group=None):
     
-        print "readHistos",  fin, name, cat, samples
         ret = []
         for s in samples:
             sfin = fin
             if ":" in s:
                 s,fname = s.split(":")
+                folder = None
+                if ".root/" in fname:
+                    fname, folder = fname.rsplit("/",1)
+                ## print fname, folder
                 sfin = self.open(fname, folder=self.options.input_dir)
-            nam = self.template_ % { "name" : name, "cat" : cat, "sample" : s }
-            h = sfin.Get(nam)
-            h.Sumw2()
-            h.GetXaxis().SetTitle(  h.GetXaxis().GetTitle().replace("@"," ") )
-            ret.append(h)
+                if folder:
+                    sfin = sfin.Get(folder)
+            if group:
+                h = None
+                for gr in group:
+                    nam = self.template_ % { "name" : name, "cat" : gr, "sample" : s }
+                    # print nam
+                    hgr = sfin.Get(nam)
+                    if not hgr:
+                        raise IOError("Could not read %s from %s" % (nam, str(sfin)) )
+                    if hgr.IsA().InheritsFrom("TH1"):
+                        hgr.Sumw2()
+                        if not h:
+                            h = hgr.Clone(self.template_ % { "name" : name, "cat" : cat, "sample" : s })
+                            h.GetXaxis().SetTitle(  h.GetXaxis().GetTitle().replace("@"," ") )
+                            h.Sumw2()
+                            self.keep(h)
+                            ret.append(h)
+                        else:
+                            h.Add(hgr)
+                    elif hgr.IsA().InheritsFrom("TTree"):
+                        ret.append(hgr)
+            else:
+                nam = self.template_ % { "name" : name, "cat" : cat, "sample" : s }
+                h = sfin.Get(nam)
+                if not hgr:
+                    raise IOError("Could not read %s from %s" % (nam, str(sfin)) )
+                if h.IsA().InheritsFrom("TH1"):
+                    h.GetXaxis().SetTitle(  h.GetXaxis().GetTitle().replace("@"," ") )
+                    h.Sumw2()
+                ret.append(h)
             
         return ret
 
@@ -435,7 +540,7 @@ class PlotApp(PyRApp):
     # Prepare canvas and legend
     #
     def makeCanvAndLeg(self,name,legPos):
-        canv = ROOT.TCanvas(name)
+        canv = ROOT.TCanvas(name,name)
         leg  = ROOT.TLegend(*legPos)
         leg.SetName("%s_legend" % name)
         
@@ -482,6 +587,10 @@ class PlotApp(PyRApp):
         
         ROOT.hggPaperStyle()
         ROOT.hggStyle.cd()
+        
+        ## self.dev_null = ROOT.std.ofstream("/dev/null")
+        ## ROOT.std.cout.rdbuf(self.dev_null.rdbuf())
+        ## ROOT.std.cerr.rdbuf(self.dev_null.rdbuf())
 
         for l in self.options.rootstyle_extra:
             ROOT.gROOT.ProcessLine(l)

@@ -20,7 +20,26 @@ def rename(h,cmap):
 
     ## print "renamed ", h.GetName()
 
+# -----------------------------------------------------------------------------------------------------------
+def smoothErrors(grae):
+   w = [ 0.10,0.25,0.30,0.25,0.10 ]
+   np = grae.GetN()
+   e1 = [0. for ip in range(np)]
+   e2 = [0. for ip in range(np)]
 
+   for ip in range(2,np-2):
+       for jp in range(-2,3):
+           e1[ip] += w[jp+2]*grae.GetErrorYlow(ip-jp)
+           e2[ip] += w[jp+2]*grae.GetErrorYhigh(ip-jp)
+   for ip in 0,1,np-1,np-2:
+       e1[ip] = grae.GetErrorYlow(ip)
+       e2[ip] = grae.GetErrorYhigh(ip)
+
+   for ip in range(np):
+       grae.SetPointEYhigh(ip,e1[ip])
+       grae.SetPointEYlow(ip,e2[ip])
+       
+       
 ## 
 def getQuantilesGraphs(histo,probs,twosided=False,errors=True,sign=1):
     from math import sqrt
@@ -78,10 +97,9 @@ def getQuantilesGraphs(histo,probs,twosided=False,errors=True,sign=1):
                 nint = proj.Integral( quant1mh, quant1ph ) + proj.Integral( quant2mh, quant2ph )
                 fq = nint / (2.*h*ntot)
                 
-                err = 1./(2.*sqrt(ntot)*fq)
-
                 graphs[ig/2].SetPoint(ix-1,histo.GetXaxis().GetBinCenter(ix),quant)
                 if errors:
+                    err = 1./(2.*sqrt(ntot)*fq)
                     graphs[ig/2].SetPointError(ix-1,histo.GetXaxis().GetBinWidth(ix)*0.5,err)
                 else:
                     graphs[ig/2].SetPointError(ix-1,histo.GetXaxis().GetBinWidth(ix)*0.5,0.)
@@ -94,10 +112,9 @@ def getQuantilesGraphs(histo,probs,twosided=False,errors=True,sign=1):
                 nint = proj.Integral( quantmh, quantph )
                 fq = nint / (2.*h*ntot)
                 
-                err = 1./(2.*sqrt(ntot)*fq)
-                
                 graphs[ig].SetPoint(ix-1,histo.GetXaxis().GetBinCenter(ix),quant)
                 if errors:
+                    err = 1./(2.*sqrt(ntot)*fq)
                     graphs[ig].SetPointError(ix-1,histo.GetXaxis().GetBinWidth(ix)*0.5,err)
                 else:
                     graphs[ig].SetPointError(ix-1,histo.GetXaxis().GetBinWidth(ix)*0.5,0.)
@@ -133,13 +150,13 @@ class PlotApp(PyRApp):
     def __init__(self,option_list=[],option_groups=[],default_cats=[]):
         super(PlotApp,self).__init__(option_groups=[
                 ("PlotApp options", [
-                        make_option("-c","--categories",dest="categories",action="callback",callback=ScratchAppend(),type="string",
+                        make_option("--categories",dest="categories",action="callback",callback=ScratchAppend(),type="string",
                                     default=default_cats,help="default: %default"),
-                        make_option("-l","--labels",dest="labels",action="callback",callback=Load(),metavar="JSON",
+                        make_option("--labels",dest="labels",action="callback",callback=Load(),metavar="JSON",
                                     default={},help="default: %default"),
                         make_option("-p","--plots",dest="plots",action="callback",callback=Load(),metavar="JSON",
                                     default=[],help="default: %default"),
-                        make_option("-t","--template",dest="template",action="store",type="string",
+                        make_option("--template",dest="template",action="store",type="string",
                                     default="%(name)s_%(cat)s_%(sample)s",help="default: %default"),
                         make_option("--postproc",dest="postproc",action="callback",callback=Load(),metavar="JSON",
                                     default={},help="default: %default"),
@@ -155,6 +172,16 @@ class PlotApp(PyRApp):
                                     default=None,help="default: %default"),
                         make_option("--data-file",dest="data_file",action="store",type="string",
                                     default=None,help="default: %default"),
+                        make_option("--lumi",dest="lumi",action="store",type="float",
+                                    default=None,help="default: %default"),
+                        make_option("--lumistr",dest="lumistr",action="store",type="string",
+                                    default=None,help="default: %default"),
+                        make_option("--fudge",dest="fudge",action="store",type="float",
+                                    default=1.,help="default: %default"),
+                        make_option("--sqrts",dest="sqrts",action="store",type="string",
+                                    default="13TeV",help="default: %default"),
+                        make_option("--mag-field",action="store", dest="mag_field", type="string",
+                                    default=None),
                         make_option("--sig-file",dest="sig_file",action="store",type="string",
                                     default=None,help="default: %default"),
                         make_option("--bkg-file",dest="bkg_file",action="store",type="string",
@@ -173,6 +200,15 @@ class PlotApp(PyRApp):
         self.bkg_  = None
         self.init_ = False
 
+        if not self.options.lumi:
+            self.options.lumi = self.options.fudge
+            self.lumistr = None
+        else:
+            self.lumistr = "%1.3g" % self.options.lumi
+            self.options.lumi *= self.options.fudge
+        if self.options.lumistr:
+            self.lumistr=self.options.lumistr
+            
         global ROOT, style_utils
         import ROOT
         import style_utils
@@ -262,12 +298,14 @@ class PlotApp(PyRApp):
                 # read background MC
                 if bkg != None and not "bkg" in skip:
                     bkgfile, bkgprocs = bkg
-                    bkghists = [ self.readProcess(bkgfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group) for subprocs in bkgprocs ]
+                    bkghists = [ self.readProcess(bkgfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group,scale=options.lumi) 
+                                 for subprocs in bkgprocs ]
                     
                 # read signal MC
                 if sig != None and not "sig" in skip:
                     sigfile, sigprocs = sig
-                    sighists = [ self.readProcess(sigfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group) for subprocs in sigprocs ]
+                    sighists = [ self.readProcess(sigfile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group,scale=options.lumi) 
+                                 for subprocs in sigprocs ]
                     
                 # read data
                 if data != None and not "data" in skip:
@@ -275,7 +313,7 @@ class PlotApp(PyRApp):
                     datahists = [ self.readProcess(datafile,*subprocs,plot=plotname,plotmodifs=plotmodifs,category=catname,group=group) for subprocs in dataprocs ]
                     
                 # collect histograms
-                allhists = datahists+bkghists+sighists
+                allhists = datahists+list(reversed(bkghists))+sighists
                 if len(allhists) == 0:
                     print "Nothing to plot for %s %s" % (plotname,catname)
                     continue
@@ -285,12 +323,12 @@ class PlotApp(PyRApp):
                 frame = allhists[0].Clone("%s_%s_frame" % (plotname,catname) )
                 frame.Reset("ICE")
                 frame.SetEntries(0)
-                self.keep(frame,True)
                 ymax = 0.
                 ymin = 0.
-                
+
                 # allocate canvas and legend and draw frame
                 canv,leg = self.makeCanvAndLeg("%s_%s" % ( plotname, catname), legPos )
+                pads=[canv]
                 if doRatio:
                     ratio =  [ float(f) for f in drawmethod.split("DrawRatio")[1].split("[")[1].split("]")[0].split(",") ][0]
                     pads  = [ROOT.TPad("%s_main"%canv.GetName(),"%s_main"%canv.GetName(),0.,1.-ratio,1.,1.),
@@ -337,10 +375,18 @@ class PlotApp(PyRApp):
                         leg.AddEntry(h,"",legopt)
             
                 # adjust yaxis
-                frame.GetYaxis().SetRangeUser(ymin,ymax*1.2)
+                if canv.GetLogy():
+                    frame.GetYaxis().SetRangeUser(ymin,ymax*15)
+                else:
+                    frame.GetYaxis().SetRangeUser(ymin,ymax*1.2)
                 leg.Draw("same")
-                canv.RedrawAxis()
-            
+                self.keep(frame,True)
+
+                for pad in pads:
+                    pad.RedrawAxis()
+                    pad.Modified()
+                    pad.Update()
+                
                 if doRatio:
                     pads[1].cd()
                     ratio = datastk.GetStack().At(datastk.GetStack().GetEntries()-1).Clone("%s_%s_ratio" % (plotname,catname))
@@ -352,9 +398,9 @@ class PlotApp(PyRApp):
                     
                     scaleFonts(ratio,pads[0].GetHNDC()/pads[1].GetHNDC())
                     
-                    ratio.Draw("hist")
+                    ratio.Draw("e")
                     pads[0].cd()
-                    
+                
                 # if needed draw inset with zoom-in
                 ##   DrawInset[rngmin,rngmax,posx1,posy1,posx2,posy2]
                 if "DrawInset" in drawmethod:
@@ -393,7 +439,7 @@ class PlotApp(PyRApp):
     #
     # Read histograms for a given process, applying manipulators
     #
-    def readProcess(self,fin,name,title,style,subproc,plot,plotmodifs,category,group):
+    def readProcess(self,fin,name,title,style,subproc,plot,plotmodifs,category,group,scale=None):
         
         ## print "readProcess", fin,name,title,style,subproc,plot,plotmodifs,category
         names = subproc.keys()               
@@ -403,17 +449,20 @@ class PlotApp(PyRApp):
             hname = names[iplot]
             h = style_utils.apply(h,subproc[hname])
         
-        sum = histos[0].Clone("%s_%s_%s" %( plot, name, category) )
-        sum.SetTitle(title)
+        hsum = histos[0].Clone("%s_%s_%s" %( plot, name, category) )
+        hsum.SetTitle(title)
         
         for h in histos[1:]:
-            sum.Add(h)
+            hsum.Add(h)
 
-        self.keep(sum,True)
-        sum = style_utils.apply(sum,plotmodifs)
-        sum = style_utils.apply(sum,style)
+        self.keep(hsum,True)
+        hsum = style_utils.apply(hsum,plotmodifs)
+        hsum = style_utils.apply(hsum,style)
         
-        return sum
+        if scale:
+            hsum.Scale(scale)
+        
+        return hsum
 
     #
     # Read plots from globe histogram files
@@ -424,20 +473,29 @@ class PlotApp(PyRApp):
         for s in samples:
             sfin = fin
             if ":" in s:
+                sa = s
                 s,fname = s.split(":")
                 folder = None
-                if ".root/" in fname:
+                if ".root/" in fname or "__infile__/" in fname:
                     fname, folder = fname.rsplit("/",1)
-                ## print fname, folder
-                sfin = self.open(fname, folder=self.options.input_dir)
+                ## print fname, folder, sfin
+                if fname != "__infile__":
+                    sfin = self.open(fname, folder=self.options.input_dir)
                 if folder:
-                    sfin = sfin.Get(folder)
+                    try:
+                        sfin = sfin.Get(str(folder))
+                    except Exception, e:
+                        print "Unable to read %s from %s" % ( folder, fname)
+                        print e
+                        sfin = None
+                if not sfin:
+                    print "Could not read %s, %s" % (sa, self.options.input_dir)
+                    sys.exit(1)
             if group:
                 h = None
                 for gr in group:
                     nam = self.template_ % { "name" : name, "cat" : gr, "sample" : s }
-                    # print nam
-                    hgr = sfin.Get(nam)
+                    hgr = sfin.Get(str(nam))
                     if not hgr:
                         raise IOError("Could not read %s from %s" % (nam, str(sfin)) )
                     if hgr.IsA().InheritsFrom("TH1"):
@@ -454,8 +512,8 @@ class PlotApp(PyRApp):
                         ret.append(hgr)
             else:
                 nam = self.template_ % { "name" : name, "cat" : cat, "sample" : s }
-                h = sfin.Get(nam)
-                if not hgr:
+                h = sfin.Get(str(nam))
+                if not h:
                     raise IOError("Could not read %s from %s" % (nam, str(sfin)) )
                 if h.IsA().InheritsFrom("TH1"):
                     h.GetXaxis().SetTitle(  h.GetXaxis().GetTitle().replace("@"," ") )
@@ -579,6 +637,16 @@ class PlotApp(PyRApp):
         return ymax
 
     # -----------------------------------------------------------------------------------------------------------
+    def newRootColor(self,src,name,alpha):
+        
+        self.ncolors += 1
+        setattr(ROOT,name,ROOT.gROOT.GetListOfColors().Last().GetNumber()+self.ncolors)
+        
+        tmp = ROOT.gROOT.GetColor( src )
+        self.keep( ROOT.TColor( getattr(ROOT,name), tmp.GetRed(), tmp.GetGreen(), tmp.GetBlue(), "", alpha ) )
+        
+
+    # -----------------------------------------------------------------------------------------------------------
     def loadRootStyle(self):
         mypath = os.path.dirname(__file__)
 
@@ -588,6 +656,12 @@ class PlotApp(PyRApp):
         ROOT.hggPaperStyle()
         ROOT.hggStyle.cd()
         
+        if self.lumistr:
+            ROOT.gROOT.ProcessLine( 'lumi_%s = "%s fb^{-1}";' % (  self.options.sqrts, self.lumistr ) )
+            
+        if self.options.mag_field:
+            ROOT.gROOT.ProcessLine( 'magText = ", %s";' % (  self.options.mag_field ) )
+            
         ## self.dev_null = ROOT.std.ofstream("/dev/null")
         ## ROOT.std.cout.rdbuf(self.dev_null.rdbuf())
         ## ROOT.std.cerr.rdbuf(self.dev_null.rdbuf())
@@ -633,6 +707,14 @@ class PlotApp(PyRApp):
         ROOT.myColorC3tr = ROOT.gROOT.GetListOfColors().Last().GetNumber()+2;
         tmp = ROOT.gROOT.GetColor( ROOT.myColorC3 )
         self.keep( ROOT.TColor( ROOT.myColorC3tr, tmp.GetRed(), tmp.GetGreen(), tmp.GetBlue(), "", 0.5  ) )
+
+        ROOT.myColorD1   = ROOT.TColor.GetColor("#7E822E")
+        ROOT.myColorD2   = ROOT.TColor.GetColor("#BABB8C")
+        ROOT.myColorD3   = ROOT.TColor.GetColor("#C3C49E")
+        ROOT.myColorD4   = ROOT.TColor.GetColor("#E3E3D0")
+        ROOT.myColorD3tr = ROOT.gROOT.GetListOfColors().Last().GetNumber()+2;
+        tmp = ROOT.gROOT.GetColor( ROOT.myColorD3 )
+        self.keep( ROOT.TColor( ROOT.myColorD3tr, tmp.GetRed(), tmp.GetGreen(), tmp.GetBlue(), "", 0.5  ) )
         
         ROOT.myColorB0   = ROOT.TColor.GetColor("#540000")
         ROOT.myColorB1   = ROOT.TColor.GetColor("#cc0000")
@@ -642,7 +724,8 @@ class PlotApp(PyRApp):
         ROOT.myColorB3tr = ROOT.gROOT.GetListOfColors().Last().GetNumber()+3;
         tmp = ROOT.gROOT.GetColor( ROOT.myColorB3 )
         self.keep( ROOT.TColor( ROOT.myColorB3tr, tmp.GetRed(), tmp.GetGreen(), tmp.GetBlue(), "", 0.5  ) )
-        
+
+        self.ncolors = 3
         ROOT.gStyle.SetHatchesLineWidth(2)
         ## ROOT.gStyle.SetErrorX(1.e-6)
         

@@ -1,9 +1,15 @@
 import ROOT
+import array
 
 # -----------------------------------------------------------------------------------------------------------
 def applyTo(obj,method,style):
     res = getattr(obj,method)()
     apply(res,style)
+
+# -----------------------------------------------------------------------------------------------------------
+def cloneRename(h,search,replace):
+    newname = h.GetName().replace(search,replace)
+    return h.Clone(newname)
 
 # -----------------------------------------------------------------------------------------------------------
 def xtitle(h,tit):
@@ -12,12 +18,22 @@ def xtitle(h,tit):
 # -----------------------------------------------------------------------------------------------------------
 def ytitle(h,tit):
     ## print "ytitle", h.GetName(), tit
-    h.GetYaxis().SetTitle( tit % { "binw" : h.GetBinWidth(0) } )
-    # h.GetYaxis().SetTitle(tit)
+    try:
+        binw = h.GetBinWidth(1) if not getattr(h,"isDensity",False) else h.isDensity
+        h.GetYaxis().SetTitle( tit % { "binw" : binw } )
+    except:
+        h.GetYaxis().SetTitle(tit)
 
 # -----------------------------------------------------------------------------------------------------------
 def ztitle(h,tit):
     h.GetZaxis().SetTitle(tit)
+
+# -----------------------------------------------------------------------------------------------------------
+def yrezoom(h,scale):
+    last=h.GetMaximum()
+    first=h.GetMinimum()
+    last=first+(last-first)*scale 
+    h.GetYaxis().SetRangeUser(first,last)
 
 # -----------------------------------------------------------------------------------------------------------
 def logy(h,ymin=None):
@@ -25,6 +41,45 @@ def logy(h,ymin=None):
         h.SetLogy()
         if ymin:
             h.ymin = ymin
+
+# -----------------------------------------------------------------------------------------------------------
+def overflow(h,limit=None):
+    from math import sqrt
+    if not limit:
+        limitBin=h.GetXaxis().GetLast()
+    else:
+        limitBin = h.GetXaxis().FindBin(limit)
+    maxBin = h.GetNbinsX()
+    ## print "overflow %s %s %1.2f %1.2f" % (h.GetName(), str(limit), h.GetXaxis().GetBinLowEdge(limitBin), h.GetXaxis().GetBinLowEdge(maxBin))
+    ## h.Print("all")
+    sumw = 0.
+    sumw2 = 0.
+    for ibin in range(limitBin,maxBin+1):
+        sumw += h.GetBinContent(ibin)
+        sumw2 += h.GetBinError(ibin)**2
+        h.SetBinContent(ibin,0.)
+        h.SetBinError(ibin,0.)
+    h.SetBinContent(limitBin,sumw)
+    h.SetBinError(limitBin,sqrt(sumw2))
+
+# -----------------------------------------------------------------------------------------------------------
+def rebin(h,rebin):
+    if type(rebin) == list:
+        bins = array.array('d',rebin)
+        return h.Rebin(len(bins)-1,h.GetName(),bins)
+    else:
+        h.Rebin(rebin)
+
+# -----------------------------------------------------------------------------------------------------------
+def density(h,ref=None):
+    if ref == None:
+        ref = h.GetBinWidth(1)
+    for ibin in range(h.GetNbinsX()):
+        width = h.GetXaxis().GetBinWidth(ibin+1)
+        h.SetBinContent(ibin+1, h.GetBinContent(ibin+1) / width * ref)
+        h.SetBinError(ibin+1, h.GetBinError(ibin+1) / width * ref)
+        h.isDensity = ref
+        ## h.isDensity = 1.
 
 # -----------------------------------------------------------------------------------------------------------
 def scaleFonts(h,scale):
@@ -82,22 +137,51 @@ def mvStatBox(h,prev=None,vert=-1,horiz=0.):
 # -----------------------------------------------------------------------------------------------------------
 def addCmsLumi(canv,period,pos,extraText=None):
     if extraText:
-        ROOT.writeExtraText = True
-        if type(extraText) == str and extraText != "":
-            ROOT.extraText = extraText
+        ROOT.gROOT.ProcessLine("writeExtraText = true && ! disableExtraText;")
+        if type(extraText) == str or type(extraText) == unicode and extraText != "":
+            ROOT.gROOT.ProcessLine('extraText = "%s";' % extraText)
     ROOT.CMS_lumi(canv,period,pos)
+
+
+def addCatLabel(canv,cat=None,x1=0.19,y1=0.81,x2=0.26,y2=0.91):
+    if not cat:
+        cat = canv.GetName().rsplit("_",1)[-1]
+    pt=ROOT.TPaveText(x1,y1,x2,y2,"nbNDC")    
+    pt.SetFillStyle(0)
+    pt.SetLineColor(ROOT.kWhite)
+    pt.AddText(cat)
+    canv.cd()
+    pt.Draw("same")
+    setattr(canv,"objs",getattr(canv,"objs",[]))
+    canv.objs.append(pt)
+    return canv
 
 
 # -----------------------------------------------------------------------------------------------------------
 def printIntegral(h,xmin=None,xmax=None):
-    bmin=-1
-    bmax=-1
-    if xmin:
-        bmin = h.FindBin(xmin)
-    if xmax:
-        bmax = h.FindBin(xmax)
+    try:
+        bmin=-1
+        bmax=-1
+        if xmin:
+            bmin = h.FindBin(xmin)
+        if xmax:
+            bmax = h.FindBin(xmax)
+                
+        print("Integral %s(%s,%s): %2.4g" % (h.GetName(), str(xmin), str(xmax), h.Integral(bmin,bmax) ))
+    except:
+        pass
 
-    print("Integral %s(%s,%s): %1.3g" % (h.GetName(), str(xmin), str(xmax), h.Integral(bmin,bmax) ))
+# -----------------------------------------------------------------------------------------------------------
+def printMean(h,xmin=None,xmax=None):
+    try:
+        if xmin and xmax:
+            first,last=h.GetXaxis().GetFirst(),h.GetXaxis().GetLast()
+            h.GetXaxis().SetRangeUser(xmin,xmax)
+        print("Mean %s(%s,%s): %2.4g" % (h.GetName(), str(xmin), str(xmax), h.GetMean() ))
+        if xmin and xmax:
+            h.GetXaxis().SetRange(first,second)
+    except:
+        pass
         
 # -----------------------------------------------------------------------------------------------------------
 def apply(h,modifs):
@@ -140,6 +224,8 @@ def apply(h,modifs):
                 except Exception as e:
                     exceptions.append(e)
                     ret = method(*args)
+                if type(ret) == type(h):
+                    h = ret
         except Exception as e:
             exceptions.append(e)
             exc = "\n".join( str(e) for e in exceptions)

@@ -64,6 +64,14 @@ class PyRApp(object):
                         action="callback", dest="__opts__", type="string", callback=Load(), metavar="JSON",
                         help="default: %default"
                         ),
+            make_option("--load-merge",
+                        action="callback", dest="__opts__", type="string", callback=Load(merge=True), metavar="JSON",
+                        help="default: %default"
+                        ),
+            make_option("--load-scratch",
+                        action="callback", dest="__opts__", type="string", callback=Load(scratch=True), metavar="JSON",
+                        help="default: %default"
+                        ),
             make_option("--styles",
                         action="callback", dest="styles", type="string", callback=Load(), metavar="JSON",
                         default={},
@@ -127,6 +135,7 @@ class PyRApp(object):
         
     def save(self,clear=False):
         for c in self.canvs_:
+            if not c: continue
             ## print c
             c.Modified()
             for fmt in self.options.saveas:
@@ -157,10 +166,13 @@ class PyRApp(object):
             for obj in objs:
                 self.keep(obj,format)
             return
-
-        if objs.IsA().InheritsFrom("TCanvas"):
-            self.canvs_.append(objs)
-        else:
+        
+        try:
+            if objs.IsA().InheritsFrom("TCanvas"):
+                self.canvs_.append(objs)
+            else:
+                self.objs_.append(objs)
+        except:
             self.objs_.append(objs)
         try:
             if objs.IsA().InheritsFrom("TFile"):
@@ -211,14 +223,23 @@ class PyRApp(object):
     def open(self,name,option="",folder=None):
         tdir = None
         fname = name
+        if folder and not fname.startswith("/"):
+            if not os.path.exists(folder):
+                try:
+                    os.mkdir(folder)
+                except:
+                    pass
+            fname = "%s/%s" % ( folder, name )
         if ".root/" in name:
             fname, tdir = name.split(".root/")
             fname += ".root"
-        if folder:
-            fname = "%s/%s" % ( folder, name )
+        print fname
+        if not fname.endswith(".root"):
+            return open(fname,option)
+        option = self.normalizeTFileOptions(option)
         key = "%s::%s" % (os.path.abspath(fname), option)
         if not key in self.files_:
-            self.files_[key] = ROOT.TFile.Open(os.path.abspath(fname),self.normalizeTFileOptions(option))
+            self.files_[key] = ROOT.TFile.Open(os.path.abspath(fname),option)
         if tdir:
             return self.files_[key].Get(tdir)
         return self.files_[key]

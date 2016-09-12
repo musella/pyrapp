@@ -22,7 +22,7 @@ def shell_args(cmd):
 # -----------------------------------------------------------------------------
 class PyRApp(object):
     
-    def __init__(self,option_list,option_groups=[],defaults=None):
+    def __init__(self,option_list,option_groups=[],defaults=None,args=None):
         self.objs_ = []
         self.canvs_ = []
 
@@ -97,7 +97,7 @@ class PyRApp(object):
                 gr.add_option(opt)
             parser.add_option_group(gr)
             
-        (self.options, self.args) = parser.parse_args()
+        (self.options, self.args) = parser.parse_args(args=args)
 
         if self.options.dumpcfg:
             self.options.dumpcfg = False
@@ -116,9 +116,9 @@ class PyRApp(object):
         else:
             try:
                 os.mkdir(self.options.outdir)
-            except:
+            except Exception, e:
+                print(e)
                 pass
-            
         
         global ROOT, style_utils
         import ROOT
